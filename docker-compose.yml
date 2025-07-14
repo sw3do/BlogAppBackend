@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # 🗄️ MySQL Database
+  database:
+    image: mysql:8.0
+    container_name: blog_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-blog_db}
+      MYSQL_USER: ${DB_USER:-blog_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-blogpassword}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - blog_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # 🦀 Rust Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blog_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql://${DB_USER:-blog_user}:${DB_PASSWORD:-blogpassword}@database:3306/${DB_NAME:-blog_db}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      RUST_LOG: info
+      SITE_NAME: ${SITE_NAME:-My Blog}
+      SITE_DESCRIPTION: ${SITE_DESCRIPTION:-A beautiful blog built with Rust}
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      SITE_AUTHOR: ${SITE_AUTHOR:-sw3do}
+      SITE_EMAIL: ${SITE_EMAIL:-contact@sw3do.dev}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - blog_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 📊 Database Admin (phpMyAdmin)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: blog_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: database
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USER:-blog_user}
+      PMA_PASSWORD: ${DB_PASSWORD:-blogpassword}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+    ports:
+      - "${PHPMYADMIN_PORT:-8080}:80"
+    depends_on:
+      - database
+    networks:
+      - blog_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  blog_network:
+    driver: bridge

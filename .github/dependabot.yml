@@ -1,0 +1,54 @@
+version: 2
+updates:
+  # 🦀 Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "sw3do"
+    assignees:
+      - "sw3do"
+    commit-message:
+      prefix: "cargo"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "rust"
+
+  # 🐳 Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    reviewers:
+      - "sw3do"
+    assignees:
+      - "sw3do"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # 🔧 GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    reviewers:
+      - "sw3do"
+    assignees:
+      - "sw3do"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"

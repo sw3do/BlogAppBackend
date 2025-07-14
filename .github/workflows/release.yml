@@ -1,0 +1,180 @@
+name: 🎉 Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: 📦 Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 📝 Generate changelog
+      id: changelog
+      run: |
+        # Extract version from tag
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        
+        # Generate changelog (you can customize this)
+        echo "## What's Changed in $VERSION" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### 🚀 Features" >> CHANGELOG.md
+        echo "### 🐛 Bug Fixes" >> CHANGELOG.md
+        echo "### 📚 Documentation" >> CHANGELOG.md
+        echo "### 🔧 Maintenance" >> CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "**Full Changelog**: https://github.com/sw3do/BlogAppBackend/compare/v0.1.0...$VERSION" >> CHANGELOG.md
+    
+    - name: 🎉 Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.changelog.outputs.VERSION }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: false
+
+  build-binaries:
+    name: 🏗️ Build Binaries
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: blog-backend-linux-x86_64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: blog-backend-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: blog-backend-macos-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: blog-backend-windows-x86_64.exe
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🦀 Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: 📦 Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: 🔧 Install system dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev libmariadb-dev
+    
+    - name: 🔧 Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install mysql-client
+        echo 'export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"' >> $GITHUB_ENV
+    
+    - name: 🏗️ Build binary
+      run: cargo build --release --target ${{ matrix.target }}
+    
+    - name: 📦 Package binary (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        cd target/${{ matrix.target }}/release
+        tar czf ../../../${{ matrix.name }}.tar.gz backend
+        cd -
+    
+    - name: 📦 Package binary (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd target/${{ matrix.target }}/release
+        7z a ../../../${{ matrix.name }}.zip backend.exe
+        cd -
+    
+    - name: 📤 Upload Release Asset (Unix)
+      if: matrix.os != 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.name }}.tar.gz
+        asset_name: ${{ matrix.name }}.tar.gz
+        asset_content_type: application/gzip
+    
+    - name: 📤 Upload Release Asset (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.name }}.zip
+        asset_name: ${{ matrix.name }}.zip
+        asset_content_type: application/zip
+
+  docker-release:
+    name: 🐳 Docker Release
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🔑 Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 📝 Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/sw3do/blog-backend
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+    
+    - name: 🏗️ Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
