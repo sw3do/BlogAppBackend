@@ -42,7 +42,7 @@ case "$1" in
         echo "  run     - Run all pending migrations"
         echo "  revert  - Revert the last applied migration"
         echo "  info    - Show migration status"
-        echo "  add     - Create a new migration file"
+        echo "  add     - Create a new migration filwe"
         exit 1
         ;;
 esac
