@@ -1,7 +1,7 @@
 # 🐳 Multi-stage Docker build for Rust Blog Backend
 
 # Build stage
-FROM rust:1.89-slim as builder
+FROM rust:1.90-slim as builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
